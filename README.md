@@ -13,7 +13,7 @@ npm install --save electron-npm-install
 ```js
 var install = require('electron-npm-install');
     
-install(["foo", "bar"], function(err) {
+install("node_modules/my-native-dep", function(err) {
   if (err) {
     console.log('Installation failed.');
   } else {
@@ -24,9 +24,9 @@ install(["foo", "bar"], function(err) {
     
 ## API
 
-### install(pkgs, done)
+### install(pkg, done)
 
 Run `npm install` where:
 
-- `pkgs` is an array of packages to install - optional
-- `done` is a function called when the command has finished - optional 
+- `pkg` is the path to the package to install (default: `"."`)
+- `done` is a function called when the command has finished (default: do nothing)
