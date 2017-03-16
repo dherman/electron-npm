@@ -1,5 +1,7 @@
 var spawn = require('child_process').spawn;
 var cmd   = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+var path  = require('path');
+var fs    = require('fs');
 
 function error(msg, cmd, args, opts, stderr, prev) {
   var err = new Error(msg);
@@ -16,147 +18,100 @@ function error(msg, cmd, args, opts, stderr, prev) {
   return err;
 }
 
-/**
- * Execute a npm command
- * @param   {Array.<string>}  args
- * @param   {Object}          opts
- * @param   {function(Error)} done
- */
-function exec(args, opts, done) {
+const possibleModuleNames = ['electron', 'electron-prebuilt', 'electron-prebuilt-compile'];
 
-  debug('`%s`', [cmd].concat(args).join(' '), opts);
+function locateElectronPrebuilt() {
+  let electronPath;
 
-  var stderr = '';
+  // Attempt to locate modules by path
+  let foundModule = possibleModuleNames.some((moduleName) => {
+    electronPath = path.join(__dirname, '..', '..', moduleName);
+    return fs.existsSync(electronPath);
+  });
 
-  spawn(cmd, args, opts)
+  // Return a path if we found one
+  if (foundModule) return electronPath;
+
+  // Attempt to locate modules by require
+  foundModule = possibleModuleNames.some((moduleName) => {
+    try {
+      electronPath = path.join(require.resolve(moduleName), '..');
+    } catch (e) {
+      return false;
+    }
+    return fs.existsSync(electronPath);
+  });
+
+  // Return a path if we found one
+  if (foundModule) return electronPath;
+  return null;
+}
+
+function getElectronVersion() {
+  let electron = locateElectronPrebuilt();
+  if (!electron) {
+    return null;
+  }
+  return require(path.join(electron, 'package.json')).version;
+}
+
+module.exports = function install(pkg, opts, done) {
+  if (typeof pkg === 'object') {
+    done = opts;
+    opts = pkg;
+    pkg = null;
+  } else if (typeof pkg === 'function') {
+    done = pkg;
+    opts = {};
+    pkg = null;
+  }
+
+  if (typeof opts === 'function') {
+    done = opts;
+    opts = {};
+  }
+
+  var stderr = "";
+
+  let electron = opts.electron || getElectronVersion();
+  if (!electron) {
+    throw new Error('could not determine electron version');
+  }
+
+  let arch = opts.arch || process.arch;
+
+  let disturl = opts.disturl || "https://atom.io/download/electron";
+
+  let cache = opts.cache || "~/.electron-npm";
+
+  var spawnOpts = {
+    env: {
+      npm_config_target: electron,
+      npm_config_arch: arch,
+      npm_config_target_arch: arch,
+      npm_config_disturl: disturl,
+      npm_config_runtime: 'electron',
+      npm_config_build_from_source: true,
+      npm_config_cache: cache
+    }
+  };
+
+  if (pkg !== null) {
+    spawnOpts.cwd = pkg;
+  }
+
+  spawn(cmd, ['install'], spawnOpts)
     .on('error', function(prev) {
-      done(error('NPM failed due to an error.', cmd, args, opts, stderr, prev));
+      done(error('NPM failed due to an error.', cmd, [], spawnOpts, stderr, prev));
     })
     .on('close', function(code) {
       if (code !== 0 || stderr.indexOf('ERR') !== -1) { //https://github.com/npm/npm/issues/4752
-        done(error('NPM exited due to an error.', cmd, args, opts, stderr));
+        done(error('NPM exited due to an error.', cmd, [], spawnOpts, stderr));
       } else {
         done(null);
       }
     })
     .stderr.on('data', function(data) {
       stderr += String(data);
-    })
-  ;
-
-}
-
-/**
- * Set the default args
- *
- * @param {string}                  cmd
- * @param {string|Array.<string>}   [pkgs]
- * @param {Object}                  [opts]
- * @param {function(Error)}         [done]
- * @param {function()}              callback
- *
- */
-function args(cmd, pkgs, opts, done, callback) {
-
-  var
-    execArgs = [cmd],
-    execOpts = {}
-    ;
-
-  // --- decide what options were passed ---
-
-  switch (typeof(pkgs)) {
-
-    case 'object':
-      if (!Array.isArray(pkgs)) {
-        done = opts;
-        opts = pkgs;
-        pkgs = [];
-      }
-      break;
-
-    case 'function':
-      done = pkgs;
-      opts = {};
-      pkgs = [];
-      break;
-
-    default:
-      pkgs = [pkgs];
-
-  }
-
-  if (arguments.length > 1) {
-    if (typeof(opts) === 'function') {
-      done = opts;
-      opts = {};
-    }
-  }
-
-  //default callback to a noop
-  opts = opts || {};
-  done = done || function(){};
-
-  if (opts.cwd) {
-    execOpts.cwd = opts.cwd;
-  }
-
-  execArgs = execArgs.concat(pkgs);
-
-  callback(execArgs, execOpts, done);
-}
-
-module.exports = {
-
-  exec: exec,
-
-  /**
-   * Run `npm install`
-   *
-   * @see https://docs.npmjs.com/cli/install
-   *
-   * @param {string|Array.<string>}   [pkgs]
-   * @param {Object}                  [opts]
-   * @param {function(Error)}         [done]
-   *
-   */
-  install: function(pkgs, opts, done) {
-    args('install', pkgs, opts, done, function(execArgs, execOpts, execDone) {
-
-      if (opts.global) {
-        execArgs.push('-g');
-      }
-
-      if (opts.save) {
-        execArgs.push('--save');
-      }
-
-      if (opts.saveDev) {
-        execArgs.push('--save-dev');
-      }
-
-      if (opts.registry) {
-        execArgs.push('--registry='+opts.registry);
-      }
-
-      exec(execArgs, execOpts, execDone)
     });
-  },
-
-  /**
-   * Run `npm dedupe`
-   *
-   * @see https://docs.npmjs.com/cli/dedupe
-   *
-   * @param {string|Array.<string>}   [pkgs]
-   * @param {Object}                  [opts]
-   * @param {function(Error)}         [done]
-   */
-  dedupe: function(pkgs, opts, done) {
-    args('dedupe', pkgs, opts, done, function(execArgs, execOpts, execDone) {
-      exec(execArgs, execOpts, execDone)
-    });
-  }
-
 };
-
