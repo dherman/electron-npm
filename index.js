@@ -1,7 +1,9 @@
-var spawn = require('child_process').spawn;
-var cmd   = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-var path  = require('path');
-var fs    = require('fs');
+var spawn  = require('child_process').spawn;
+var cmd    = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+var path   = require('path');
+var fs     = require('fs');
+var mkdirp = require('mkdirp');
+var os     = require('os');
 
 function error(msg, cmd, args, opts, stderr, prev) {
   var err = new Error(msg);
@@ -82,36 +84,42 @@ module.exports = function install(pkg, opts, done) {
 
   let disturl = opts.disturl || "https://atom.io/download/electron";
 
-  let cache = opts.cache || "~/.electron-npm";
+  let cache = opts.cache || path.join(os.homedir(), ".electron-npm");
 
-  var spawnOpts = {
-    env: {
-      npm_config_target: electron,
-      npm_config_arch: arch,
-      npm_config_target_arch: arch,
-      npm_config_disturl: disturl,
-      npm_config_runtime: 'electron',
-      npm_config_build_from_source: true,
-      npm_config_cache: cache
+  mkdirp(cache, function(err) {
+    if (err) {
+      return done(err);
     }
-  };
 
-  if (pkg !== null) {
-    spawnOpts.cwd = pkg;
-  }
-
-  spawn(cmd, ['install'], spawnOpts)
-    .on('error', function(prev) {
-      done(error('NPM failed due to an error.', cmd, [], spawnOpts, stderr, prev));
-    })
-    .on('close', function(code) {
-      if (code !== 0 || stderr.indexOf('ERR') !== -1) { //https://github.com/npm/npm/issues/4752
-        done(error('NPM exited due to an error.', cmd, [], spawnOpts, stderr));
-      } else {
-        done(null);
+    var spawnOpts = {
+      env: {
+        npm_config_target: electron,
+        npm_config_arch: arch,
+        npm_config_target_arch: arch,
+        npm_config_disturl: disturl,
+        npm_config_runtime: 'electron',
+        npm_config_build_from_source: true,
+        npm_config_cache: cache
       }
-    })
-    .stderr.on('data', function(data) {
-      stderr += String(data);
-    });
+    };
+
+    if (pkg !== null) {
+      spawnOpts.cwd = pkg;
+    }
+
+    spawn(cmd, ['install'], spawnOpts)
+      .on('error', function(prev) {
+        done(error('NPM failed due to an error.', cmd, [], spawnOpts, stderr, prev));
+      })
+      .on('close', function(code) {
+        if (code !== 0 || stderr.indexOf('ERR') !== -1) { //https://github.com/npm/npm/issues/4752
+          done(error('NPM exited due to an error.', cmd, [], spawnOpts, stderr));
+        } else {
+          done(null);
+        }
+      })
+      .stderr.on('data', function(data) {
+        stderr += String(data);
+      });
+  });
 };
