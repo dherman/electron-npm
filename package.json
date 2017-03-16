@@ -2,6 +2,9 @@
   "name": "electron-npm-install",
   "version": "0.1.0",
   "description": "An API to execute `npm install` inside of electron projects.",
+  "bin": {
+    "electron-npm-install": "./cli.js"
+  },
   "keywords": [
     "npm",
     "cmd",
@@ -14,6 +17,7 @@
     "native"
   ],
   "dependencies": {
+    "commander": "^2.9.0",
     "mkdirp": "^0.5.1"
   },
   "repository": {

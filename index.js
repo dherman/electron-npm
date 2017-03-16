@@ -92,7 +92,7 @@ module.exports = function install(pkg, opts, done) {
     }
 
     var spawnOpts = {
-      env: {
+      env: Object.assign({}, process.env, {
         npm_config_target: electron,
         npm_config_arch: arch,
         npm_config_target_arch: arch,
@@ -100,7 +100,7 @@ module.exports = function install(pkg, opts, done) {
         npm_config_runtime: 'electron',
         npm_config_build_from_source: true,
         npm_config_cache: cache
-      }
+      })
     };
 
     if (pkg !== null) {
@@ -109,7 +109,7 @@ module.exports = function install(pkg, opts, done) {
 
     spawn(cmd, ['install'], spawnOpts)
       .on('error', function(prev) {
-        done(error('NPM failed due to an error.', cmd, [], spawnOpts, stderr, prev));
+        done(error("NPM failed due to an error: " + prev, cmd, [], spawnOpts, stderr, prev));
       })
       .on('close', function(code) {
         if (code !== 0 || stderr.indexOf('ERR') !== -1) { //https://github.com/npm/npm/issues/4752
